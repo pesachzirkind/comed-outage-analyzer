@@ -31,13 +31,34 @@ rm -rf data                 # clear the demo snapshots first
 node comed.js check         # poll, report, rebuild the dashboard
 ```
 
-Repeat `check` whenever you want an update, or let it run itself:
+The first poll only establishes a baseline — rates need at least two.
+
+### Run it as a service (recommended)
 
 ```bash
-node comed.js watch --interval 5 --open
+node comed.js serve --interval 5 --open
 ```
 
-The first poll only establishes a baseline — rates need at least two.
+One process: it polls in the background and serves a dashboard at
+<http://localhost:8080> that **refreshes itself** when a new snapshot lands.
+Open the tab once and leave it — no re-running anything, no reopening files.
+
+If a poll fails (ComEd's map goes down exactly when a storm makes it
+interesting), the last good dashboard stays up and the error shows in
+`/api.json`.
+
+| Route | |
+|---|---|
+| `/` | the live dashboard |
+| `/api.json` | current totals, last poll time, last error |
+| `POST /refresh` | force a poll now |
+
+It binds to `127.0.0.1` — this machine only. `--host 0.0.0.0` exposes it to your
+network, which it will warn you about; there's no authentication, so only do
+that on a network you trust.
+
+Prefer the terminal? `node comed.js watch --interval 5` does the same polling
+and prints the report each time instead.
 
 ---
 
@@ -126,7 +147,8 @@ if you want the 5-minute number to mean what it says.
 
 | Command | What it does |
 |---|---|
-| `check` | Poll once, print what changed, rebuild the dashboard. **The main one.** |
+| `serve` | Poll in the background, serve a self-refreshing dashboard. **The main one.** |
+| `check` | Poll once, print what changed, rebuild the dashboard |
 | `watch` | Run `check` on a timer (`--interval <minutes>`, default 10) |
 | `poll` | Fetch and save a snapshot, no report |
 | `report` | Re-analyze saved snapshots and print (no network) |
@@ -137,6 +159,8 @@ if you want the 5-minute number to mean what it says.
 Useful options:
 
 ```
+--port <n>          Port for serve (default 8080)
+--host <addr>       Bind address for serve (default 127.0.0.1)
 --since <when>      Totals fixed since an earlier point: "first", "90m", "3h",
                     a snapshot count back ("5"), or an ISO timestamp
 --zones <path>      Custom area definitions
@@ -190,6 +214,31 @@ escape hatch — and the tool tells you how when it can't find them:
    `data/config.json` afterwards
 
 ---
+
+## Where to run it
+
+The tool needs to reach `comed.com` and `kubra.io`, and it needs to keep running
+between polls to build up history. Options, honestly compared:
+
+**Your own machine — the right default.** `node comed.js serve --interval 5`.
+Free, reliable, 5-minute polling with no caveats. The only cost is that the
+machine has to be awake. Since the whole point is checking in every few minutes
+while something is going on, you're usually sitting at it anyway.
+
+**An always-on box** — a Raspberry Pi, a home server, or a $4–6/month VPS. Same
+command, plus a `systemd` unit or `pm2` so it survives reboots. This is the move
+if you want history to accumulate across a multi-day storm without leaving a
+laptop open.
+
+**GitHub Actions** — tempting, but read the numbers first. On a *private* repo
+the free tier gives 2,000 Actions minutes/month. A 10-minute cron is ~4,300 runs
+a month; at roughly a minute each including checkout and setup, that is several
+times the free allowance. Hourly polling (~720 runs) fits comfortably. Scheduled
+workflows also only guarantee 5-minute *granularity*, not 5-minute *punctuality*
+— GitHub delays them under load, sometimes well past the interval, which puts
+ragged gaps in the history the rate windows depend on. And publishing the
+dashboard to GitHub Pages from a private repo requires a paid plan. Workable for
+a slow hourly log; a poor fit for watching a storm.
 
 ## Known limits
 

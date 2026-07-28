@@ -342,6 +342,8 @@ export function analyzeHistory(rawSnapshots, zones, options = {}) {
       capturedAt: latest.capturedAt,
       customersOut: totalCustomers(latest),
       outages: totalOutages(latest),
+      // Synthetic data must never be mistaken for a real outage picture.
+      demo: latest.demo === true,
       coverage: latest.coverage ?? null,
       clusterShare: clusterShare(latest.outages),
       byZone: currentByZone(latest.outages),

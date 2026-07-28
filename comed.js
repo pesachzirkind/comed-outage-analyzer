@@ -15,6 +15,7 @@ import { HttpClient } from './src/http.js';
 import { KubraClient } from './src/kubra.js';
 import { renderHtml } from './src/html.js';
 import { renderTerminalReport } from './src/report.js';
+import { startServer } from './src/serve.js';
 import {
   DEFAULT_DATA_DIR,
   loadConfig,
@@ -31,6 +32,9 @@ Usage
   node comed.js <command> [options]
 
 Commands
+  serve              Run it as a local service: polls in the background and
+                     serves a live dashboard at http://localhost:8080 that
+                     refreshes itself. Leave a tab open and forget about it.
   check              Poll once, show what changed, and rebuild the dashboard.
                      This is the one to run every 5-10 minutes.
   poll               Fetch a snapshot and save it. No report.
@@ -45,7 +49,9 @@ Options
   --since <when>     Also report totals fixed since an earlier point:
                      "first", a duration ("90m", "3h"), a snapshot count back
                      ("5"), or an ISO timestamp.
-  --interval <min>   Polling interval for watch (default 10). Rates are broken
+  --port <n>         Port for serve (default 8080)
+  --host <addr>      Bind address for serve (default 127.0.0.1, localhost only)
+  --interval <min>   Polling interval for serve/watch (default 10). Rates are broken
                      out at 5m/15m/30m/1h/3h/6h/24h — poll at least as often as
                      the shortest window you care about.
   --data-dir <path>  Where snapshots live (default ./data)
@@ -97,6 +103,29 @@ async function main() {
     case 'watch':
       await runWatch({ dataDir, zones, outPath, options, log });
       break;
+
+    case 'serve': {
+      const interval = Number(options.interval ?? 10);
+      if (!Number.isFinite(interval) || interval < 1) {
+        throw new Error('--interval must be at least 1 minute');
+      }
+      const port = Number(options.port ?? 8080);
+      const host = options.host === true ? '0.0.0.0' : (options.host ?? '127.0.0.1');
+      if (host !== '127.0.0.1') {
+        log(`Warning: binding to ${host} exposes the dashboard beyond this machine. It has no authentication.`);
+      }
+      await startServer({
+        dataDir,
+        zones,
+        port,
+        host,
+        intervalMinutes: interval,
+        log,
+        poll: () => runPoll({ dataDir, options, log }),
+      });
+      if (options.open) openInBrowser(`http://localhost:${port}`);
+      break;
+    }
 
     case 'demo':
       await runDemo({ dataDir, log });

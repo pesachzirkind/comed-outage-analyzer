@@ -11,6 +11,7 @@
     "comed-outage-analyzer": "./comed.js"
   },
   "scripts": {
+    "serve": "node comed.js serve",
     "check": "node comed.js check",
     "watch": "node comed.js watch",
     "demo": "node comed.js demo",
