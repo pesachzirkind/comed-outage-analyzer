@@ -45,10 +45,25 @@ Zero dependencies. Node 18+ (uses built-in `fetch`).
 >
 > ### To finish the ComEd path
 >
-> Load the map in an ordinary browser, note the data request in the network
-> panel, and set it as a repository variable. One human page-load answers what
-> this much automated probing did not — and does not add to the traffic that
-> caused the block.
+> ```bash
+> npx playwright install chromium
+> node scripts/capture-endpoint.mjs
+> ```
+>
+> The map builds its request URLs at runtime, so reading static files never
+> reveals them — a browser executing the page reveals them immediately. This is
+> where the endpoint hunt should have started. The script loads the page **once**
+> and prints the data requests it observes.
+>
+> Equally good, and needing nothing installed: open the map in any browser,
+> DevTools → Network → Fetch/XHR, reload, and read off the URL.
+>
+> Either way, set the result as the `COMED_INSTANCE_ID` / `COMED_VIEW_ID`
+> repository variables (or whatever the endpoint turns out to need) and
+> re-enable the schedule in `.github/workflows/poll.yml`.
+>
+> Please don't run it against a site that is currently refusing traffic. Wait
+> for the 403 to clear first.
 
 ---
 
