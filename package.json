@@ -15,6 +15,6 @@
     "check": "node comed.js check",
     "watch": "node comed.js watch",
     "demo": "node comed.js demo",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test test/*.test.js"
   }
 }
