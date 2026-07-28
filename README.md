@@ -153,7 +153,7 @@ commit each run. Committing to `main` instead would grow the repo forever — 14
 commits a day, each carrying a full outage list — so the workflow keeps a rolling
 72 hours (`--keep-hours 72`) and no history behind it.
 
-**One-time setup:** Settings → Pages → Source → **GitHub Actions**. Then run the
+**Setup:** the workflow enables Pages itself on the first run. Just run the
 *Poll ComEd* workflow once from the Actions tab; it picks up the schedule after
 that.
 

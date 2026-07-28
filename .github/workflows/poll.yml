@@ -74,5 +74,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # enablement:true turns Pages on via the API on the first run, so there is
+      # no manual Settings step. If the token lacks permission this fails loudly
+      # rather than silently deploying nowhere — set Settings -> Pages -> Source
+      # to "GitHub Actions" by hand and re-run.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - id: deployment
         uses: actions/deploy-pages@v4
