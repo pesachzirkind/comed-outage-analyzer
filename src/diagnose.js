@@ -262,6 +262,33 @@ export async function probeAngular({ write = (s) => process.stdout.write(s) } = 
     return;
   }
 
+  // Angular builds most request URLs from relative paths and config constants,
+  // so absolute-URL matching alone misses the API. Search the real bundles for
+  // the terms an outage service would be named after and print the surrounding
+  // source, which is where the path and any gateway host actually appear.
+  const KEYWORDS = [
+    'azure-api.net', 'subscription-key', 'Ocp-Apim',
+    'outageMap', 'OutageMap', 'getOutage', 'outages/', 'outage-map',
+    'interval_generation', 'metadata.xml', 'stormcenter', 'kubra',
+    '/api/', '.svc/', 'apiUrl', 'baseUrl', 'environment.',
+  ];
+  for (const file of realFiles) {
+    write(`\n--- keyword context in ${file.url} (${file.body.length} bytes) ---\n`);
+    for (const keyword of KEYWORDS) {
+      let from = 0;
+      let hits = 0;
+      while (hits < 4) {
+        const at = file.body.indexOf(keyword, from);
+        if (at === -1) break;
+        hits++;
+        from = at + keyword.length;
+        const snippet = file.body.slice(Math.max(0, at - 130), at + keyword.length + 130);
+        write(`  [${keyword}] …${snippet.replace(/\s+/g, ' ')}…\n`);
+      }
+      if (hits === 0) continue;
+    }
+  }
+
   for (const file of realFiles) {
     write(`\n--- endpoint-like strings in ${file.url} ---\n`);
     const seen = new Set();
