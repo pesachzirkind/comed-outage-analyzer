@@ -359,3 +359,13 @@ test('summary totals are unwrapped from the Kubra { val } shape', async () => {
   assert.equal(summary.customersServed, 2265680);
   assert.equal(summary.totalOutages, 62);
 });
+
+test('a wrong-territory rejection is tagged so callers can drop the cached ids', () => {
+  const client = new KubraClient({ http: new FakeHttp(), instanceId: 'i', viewId: 'v' });
+  try {
+    client.assertComEdTerritory({ west: -84.4, south: 41.8, east: -82.4, north: 44.1 });
+    assert.fail('should have thrown');
+  } catch (error) {
+    assert.equal(error.code, 'WRONG_TERRITORY');
+  }
+});

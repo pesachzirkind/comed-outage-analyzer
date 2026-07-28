@@ -368,7 +368,7 @@ export class KubraClient {
     if (this.allowAnyTerritory || !serviceArea) return;
     if (bboxesOverlap(serviceArea, COMED_TERRITORY)) return;
 
-    throw new Error(
+    const error = new Error(
       'This Storm Center instance is not ComEd.\n' +
         `  Its service area spans lat ${serviceArea.south.toFixed(2)}..${serviceArea.north.toFixed(2)}, ` +
         `lon ${serviceArea.west.toFixed(2)}..${serviceArea.east.toFixed(2)},\n` +
@@ -378,6 +378,10 @@ export class KubraClient {
         '  Re-check the IDs, or pass --allow-any-territory if you are deliberately\n' +
         '  pointing this at another Kubra utility.',
     );
+    // Tagged so the caller can drop the cached ids rather than retrying a
+    // known-wrong instance on every future poll.
+    error.code = 'WRONG_TERRITORY';
+    throw error;
   }
 
   /** One complete poll: session, summary, and the outage list. */

@@ -177,7 +177,21 @@ async function runPoll({ dataDir, options, log }) {
   });
 
   log('Polling ComEd outage map...');
-  const snapshot = await client.poll();
+
+  let snapshot;
+  try {
+    snapshot = await client.poll();
+  } catch (error) {
+    // A cached id that turns out to belong to another utility would otherwise
+    // be reused forever, since discovery is skipped whenever a cache exists.
+    // Drop it so the next poll starts over.
+    if (error.code === 'WRONG_TERRITORY' && (config.instanceId || config.viewId)) {
+      saveConfig(dataDir, { ...config, instanceId: null, viewId: null });
+      log('  cleared the cached instance/view ids — they pointed at another utility');
+    }
+    throw error;
+  }
+
   const path = saveSnapshot(dataDir, snapshot);
 
   // Cache the ids so the next poll skips discovery entirely.
