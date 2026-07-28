@@ -34,6 +34,20 @@ const GUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-
 const PAIR_RE = new RegExp(`stormcenters/(${GUID})/views/(${GUID})`);
 const VIEW_RE = new RegExp(`views/(${GUID})`, 'g');
 const ANY_GUID_RE = new RegExp(GUID, 'g');
+const SCRIPT_SRC_RE = /<script[^>]+src=["']([^"']+)["']/gi;
+
+// The map page is a shell — the GUIDs usually live in a bundled script rather
+// than in the served HTML, so discovery follows script tags too. Bounded,
+// because a Storm Center page references a lot of them.
+const MAX_SCRIPTS_PER_PAGE = 12;
+
+// Last-resort candidates, taken from public write-ups of ComEd's Storm Center.
+// These are NEVER trusted on their own: each is probed against currentState and
+// used only if it returns a usable data path, so a stale entry costs one failed
+// request rather than a wrong answer.
+const KNOWN_CANDIDATES = [
+  { instanceId: '4fbb3ad3-e01d-4d71-9575-d453769c1171', viewId: '8ed2824a-bd92-474e-a7c4-848b812b7f9b' },
+];
 
 // ComEd is northern Illinois. Zoom 7 tiles are ~200km, so the whole territory
 // is a handful of tiles — a cheap starting point for the crawl.
@@ -72,31 +86,37 @@ export class KubraClient {
 
     const candidateViews = new Set();
     const candidateGuids = new Set();
+    // Every fetch is recorded so a failure explains itself in CI logs rather
+    // than just saying "not found".
+    const trace = [];
 
-    for (const page of DISCOVERY_PAGES) {
-      let html;
-      try {
-        html = await this.http.getText(page);
-      } catch (error) {
-        this.log(`  discovery: ${page} unreachable (${error.message})`);
-        continue;
-      }
-      if (!html) continue;
-
-      const direct = html.match(PAIR_RE);
+    const scan = (text, source) => {
+      const direct = text.match(PAIR_RE);
       if (direct) {
         this.instanceId = direct[1];
         this.viewId = direct[2];
-        this.log(`  discovery: found instance/view pair on ${page}`);
-        return { instanceId: this.instanceId, viewId: this.viewId };
+        this.log(`  discovery: found instance/view pair in ${source}`);
+        return true;
       }
+      for (const m of text.matchAll(VIEW_RE)) candidateViews.add(m[1]);
+      for (const m of text.matchAll(ANY_GUID_RE)) candidateGuids.add(m[0]);
+      return false;
+    };
 
-      for (const m of html.matchAll(VIEW_RE)) candidateViews.add(m[1]);
-      for (const m of html.matchAll(ANY_GUID_RE)) candidateGuids.add(m[0]);
+    for (const page of DISCOVERY_PAGES) {
+      const html = await this._fetchForDiscovery(page, trace);
+      if (!html) continue;
+      if (scan(html, page)) return { instanceId: this.instanceId, viewId: this.viewId };
+
+      for (const scriptUrl of extractScriptUrls(html, page).slice(0, MAX_SCRIPTS_PER_PAGE)) {
+        const script = await this._fetchForDiscovery(scriptUrl, trace, '  ');
+        if (!script) continue;
+        if (scan(script, scriptUrl)) return { instanceId: this.instanceId, viewId: this.viewId };
+      }
     }
 
-    // No direct pair. Try every (guid, view) combination against currentState;
-    // the right one is the only pair that returns usable JSON.
+    // No literal pair anywhere. Try the collected GUIDs against currentState —
+    // the right combination is the only one that returns a usable data path.
     for (const viewId of candidateViews) {
       for (const instanceId of candidateGuids) {
         if (instanceId === viewId) continue;
@@ -109,16 +129,43 @@ export class KubraClient {
       }
     }
 
+    // Still nothing scraped. Fall back to known-published pairs, each validated
+    // the same way, so a stale entry can only fail — never mislead.
+    for (const candidate of KNOWN_CANDIDATES) {
+      if (await this._probe(candidate.instanceId, candidate.viewId)) {
+        this.instanceId = candidate.instanceId;
+        this.viewId = candidate.viewId;
+        this.log(`  discovery: scraping found nothing; validated a known published pair`);
+        return candidate;
+      }
+      trace.push(`known candidate ${candidate.instanceId}/${candidate.viewId} -> rejected by currentState`);
+    }
+
     throw new Error(
-      'Could not auto-discover the ComEd Storm Center IDs.\n' +
-        'Fix it in one minute:\n' +
+      'Could not auto-discover the ComEd Storm Center IDs.\n\n' +
+        `What was tried (${candidateGuids.size} GUIDs seen, ${candidateViews.size} view candidates):\n` +
+        trace.map((line) => `  ${line}`).join('\n') +
+        '\n\nFix it in one minute:\n' +
         '  1. Open https://outagemap.comed.com/ in a browser\n' +
         '  2. Open DevTools -> Network, filter for "currentState"\n' +
         '  3. The URL looks like:\n' +
         '     kubra.io/stormcenter/api/v1/stormcenters/<INSTANCE>/views/<VIEW>/currentState\n' +
         '  4. Re-run with:  --instance <INSTANCE> --view <VIEW>\n' +
-        '     (the IDs are cached afterwards, so you only do this once)',
+        '     (the IDs are cached afterwards, so you only do this once)\n' +
+        '     In the workflow, set the COMED_INSTANCE_ID / COMED_VIEW_ID repository variables.',
     );
+  }
+
+  /** Fetch a discovery URL, recording the outcome in `trace` either way. */
+  async _fetchForDiscovery(url, trace, indent = '') {
+    try {
+      const res = await this.http.get(url, { accept: 'text/html,application/xhtml+xml,*/*' });
+      trace.push(`${indent}${url} -> HTTP ${res.status}${res.ok ? ` (${res.body.length} bytes)` : ''}`);
+      return res.ok ? res.body : null;
+    } catch (error) {
+      trace.push(`${indent}${url} -> ${error.message}`);
+      return null;
+    }
   }
 
   async _probe(instanceId, viewId) {
@@ -345,6 +392,25 @@ export const COMED_FALLBACK_BBOX = {
   east: -87.4,
   north: 42.6,
 };
+
+/** Absolute URLs of every `<script src>` on a page, resolved against it. */
+export function extractScriptUrls(html, pageUrl) {
+  const urls = [];
+  for (const match of html.matchAll(SCRIPT_SRC_RE)) {
+    try {
+      const resolved = new URL(match[1], pageUrl).toString();
+      // Only same-origin-ish bundles are worth reading; skip analytics and tag
+      // managers, which are large, numerous, and never carry the GUIDs.
+      if (/googletagmanager|google-analytics|doubleclick|facebook|hotjar|adobedtm|newrelic/i.test(resolved)) {
+        continue;
+      }
+      if (!urls.includes(resolved)) urls.push(resolved);
+    } catch {
+      // Malformed src attribute — nothing to resolve against.
+    }
+  }
+  return urls;
+}
 
 function toOutage(feature, desc, point, tile) {
   const encoded = feature?.geom?.p?.[0] ?? '';

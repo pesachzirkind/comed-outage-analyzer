@@ -88,4 +88,13 @@ export class FakeHttp {
     this.requested.push(url);
     return this.routes[url] ?? null;
   }
+
+  /** Mirrors HttpClient.get: a miss is a 404, not a thrown error. */
+  async get(url) {
+    this.requestCount++;
+    this.requested.push(url);
+    const body = this.routes[url];
+    if (body === undefined) return { ok: false, status: 404, body: '', url };
+    return { ok: true, status: 200, body: typeof body === 'string' ? body : JSON.stringify(body), url };
+  }
 }

@@ -49,6 +49,12 @@ jobs:
           fi
 
       - name: Poll the outage map
+        # Escape hatch if ComEd redeploys and auto-discovery stops finding the
+        # GUIDs: set these as repository variables and the poll uses them
+        # directly. Empty is the normal case and means "discover them".
+        env:
+          COMED_INSTANCE_ID: ${{ vars.COMED_INSTANCE_ID }}
+          COMED_VIEW_ID: ${{ vars.COMED_VIEW_ID }}
         run: node comed.js poll --keep-hours 72
 
       - name: Build the dashboard

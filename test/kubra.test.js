@@ -258,3 +258,65 @@ test('discovery fails with instructions for the manual fallback', async () => {
   const client = new KubraClient({ http: new FakeHttp() });
   await assert.rejects(() => client.discoverIds(), /--instance/);
 });
+
+test('script URLs are resolved against the page and noise is skipped', async () => {
+  const { extractScriptUrls } = await import('../src/kubra.js');
+  const html = `
+    <script src="/static/app.bundle.js"></script>
+    <script src="https://cdn.example.com/vendor.js"></script>
+    <script src="https://www.googletagmanager.com/gtm.js?id=X"></script>
+    <script src="./rel.js"></script>
+    <script>inline()</script>`;
+
+  const urls = extractScriptUrls(html, 'https://outagemap.comed.com/index.html');
+  assert.deepEqual(urls, [
+    'https://outagemap.comed.com/static/app.bundle.js',
+    'https://cdn.example.com/vendor.js',
+    'https://outagemap.comed.com/rel.js',
+  ]);
+});
+
+test('discovery finds the GUID pair inside a linked script bundle', async () => {
+  const instanceId = '11111111-2222-3333-4444-555555555555';
+  const viewId = '66666666-7777-8888-9999-aaaaaaaaaaaa';
+
+  const http = new FakeHttp({
+    'https://outagemap.comed.com/': '<html><script src="/app.js"></script></html>',
+    // The GUIDs live in the bundle, not the shell — the real-world case.
+    'https://outagemap.comed.com/app.js': `var cfg={u:"stormcenters/${instanceId}/views/${viewId}/currentState"};`,
+  });
+
+  const client = new KubraClient({ http });
+  assert.deepEqual(await client.discoverIds(), { instanceId, viewId });
+});
+
+test('a known published pair is used only after currentState validates it', async () => {
+  const known = { instanceId: '4fbb3ad3-e01d-4d71-9575-d453769c1171', viewId: '8ed2824a-bd92-474e-a7c4-848b812b7f9b' };
+
+  // Nothing scrapable, but the known pair answers currentState.
+  const accepted = new KubraClient({
+    http: new FakeHttp({
+      [`https://kubra.io/stormcenter/api/v1/stormcenters/${known.instanceId}/views/${known.viewId}/currentState?preview=false`]:
+        { data: { interval_generation_data: 'some/path' } },
+    }),
+  });
+  assert.deepEqual(await accepted.discoverIds(), known);
+
+  // Same pair, but currentState rejects it — it must not be adopted.
+  const rejected = new KubraClient({ http: new FakeHttp() });
+  await assert.rejects(() => rejected.discoverIds(), /Could not auto-discover/);
+});
+
+test('a failed discovery reports what it actually tried', async () => {
+  const client = new KubraClient({ http: new FakeHttp() });
+  await assert.rejects(
+    () => client.discoverIds(),
+    (error) => {
+      assert.match(error.message, /What was tried/);
+      assert.match(error.message, /outagemap\.comed\.com\/ -> HTTP 404/);
+      assert.match(error.message, /rejected by currentState/);
+      assert.match(error.message, /COMED_INSTANCE_ID/);
+      return true;
+    },
+  );
+});

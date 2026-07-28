@@ -152,9 +152,19 @@ async function runPoll({ dataDir, options, log }) {
   const config = loadConfig(dataDir);
   const useCached = !options.rediscover;
 
+  // Precedence: explicit flag, then environment (how the scheduled workflow can
+  // supply them without a code change), then the cache from a previous poll.
+  // An unset GitHub Actions variable arrives as "", which ?? would happily pass
+  // along, so blanks are normalised to null first.
+  const firstSet = (...values) => values.map(blankToNull).find((v) => v !== null) ?? null;
+
   const client = new KubraClient({
-    instanceId: options.instance ?? (useCached ? config.instanceId : null) ?? null,
-    viewId: options.view ?? (useCached ? config.viewId : null) ?? null,
+    instanceId: firstSet(
+      options.instance,
+      process.env.COMED_INSTANCE_ID,
+      useCached ? config.instanceId : null,
+    ),
+    viewId: firstSet(options.view, process.env.COMED_VIEW_ID, useCached ? config.viewId : null),
     maxZoom: Number(options['max-zoom'] ?? 11),
     maxRequests: Number(options['max-requests'] ?? 1500),
     http: new HttpClient({ concurrency: 8 }),
@@ -335,6 +345,13 @@ function openInBrowser(path) {
   const opener =
     process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
   spawn(opener, [path], { stdio: 'ignore', detached: true, shell: process.platform === 'win32' }).unref();
+}
+
+/** Treat "", whitespace, and `true` (a bare flag) as "not provided". */
+function blankToNull(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
