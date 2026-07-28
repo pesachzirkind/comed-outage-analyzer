@@ -126,6 +126,27 @@ async function safeGet(http, url) {
 
 const IFACTOR_BASE = 'https://outagemap.comed.com/';
 
+// outagemap.comed.com answers every request correctly but its metadata pointer
+// has been frozen at 2020_11_16_18_00_46 for years — a decommissioned host
+// still serving its last snapshot. Any client built on it must check freshness,
+// or it will publish six-year-old outages with total confidence.
+export const STALE_AFTER_HOURS = 6;
+
+/** Parse the timestamp encoded in an iFactor directory name (YYYY_MM_DD_HH_MM_SS). */
+export function directoryTimestamp(directory) {
+  const m = /(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})/.exec(directory ?? '');
+  if (!m) return null;
+  const [, y, mo, d, h, mi, sec] = m;
+  const at = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:${sec}Z`);
+  return Number.isNaN(at) ? null : new Date(at).toISOString();
+}
+
+/** Hours between an iFactor directory's timestamp and now, or null. */
+export function directoryAgeHours(directory, now = Date.now()) {
+  const at = directoryTimestamp(directory);
+  return at === null ? null : (now - Date.parse(at)) / 3600000;
+}
+
 export async function probeIFactor({ write = (s) => process.stdout.write(s) } = {}) {
   const http = new HttpClient({ concurrency: 4 });
   const show = async (label, url, limit = 2500) => {

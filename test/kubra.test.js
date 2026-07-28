@@ -403,3 +403,15 @@ test('uppercase GUIDs are not paired — they are SharePoint noise, not Kubra id
     'uppercase-only GUIDs must not generate probe traffic',
   );
 });
+
+test('iFactor directory names are dated, and staleness is detectable', async () => {
+  const { directoryTimestamp, directoryAgeHours, STALE_AFTER_HOURS } = await import('../src/diagnose.js');
+
+  // The exact directory outagemap.comed.com has been frozen on.
+  assert.equal(directoryTimestamp('2020_11_16_18_00_46'), '2020-11-16T18:00:46.000Z');
+
+  const now = Date.parse('2026-07-28T02:00:00.000Z');
+  assert.ok(directoryAgeHours('2020_11_16_18_00_46', now) > 40000, 'years stale');
+  assert.ok(directoryAgeHours('2026_07_28_01_30_00', now) < STALE_AFTER_HOURS, 'fresh');
+  assert.equal(directoryTimestamp('not-a-directory'), null);
+});

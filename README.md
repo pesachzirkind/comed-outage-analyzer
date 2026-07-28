@@ -11,29 +11,41 @@ Zero dependencies. Node 18+ (uses built-in `fetch`).
 
 > ## ⚠️ Status: not yet pulling live ComEd data
 >
-> Everything in this repo works and is tested — the tile crawler, the gross/net
-> analysis, the dashboard, and the scheduled workflow have all run green against
-> a real KUBRA Storm Center instance end to end.
+> Everything in this repo works and is tested. What is unresolved is which
+> endpoint serves ComEd's *current* outage data.
 >
-> What is unresolved is locating **ComEd's** instance. `outagemap.comed.com` is a
-> 733-byte redirect stub; the real page loads *iFactor-era* Storm Center scripts
-> (`IFactorLayersHandler.js`, `IFactorDataMonitor.js`), which is an older product
-> generation than the `kubra.io/stormcenter/api/v1/…` API this client is built
-> against. Twenty GUIDs were harvested from those pages and none of their
-> combinations answer `currentState`, so ComEd's map may not use that API at all.
+> **What was established.** ComEd does not use the modern KUBRA instance/view
+> API this tool was first built against — its map contains no GUIDs at all.
+> `outagemap.comed.com` runs iFactor-era Storm Center, whose protocol is a
+> directory pointer rather than an API:
 >
-> Until that is resolved the scheduled poll fails deliberately rather than
-> publishing anything, and there is no Pages site. A guard rejects any instance
-> whose service area falls outside northern Illinois — added after a pair
-> published online as "ComEd's" turned out to serve Michigan and briefly produced
-> a dashboard of Detroit outages labelled as ComEd.
+> ```
+> data/interval_generation_data/metadata.xml   -> current {directory}
+> {directory}/data.js                          -> total_outages, total_customers
+> {directory}/thematic/thematic_areas.js       -> per-county aggregates
+> {directory}/thematiczip/thematic_areas.js    -> per-ZIP aggregates
+> ```
 >
-> **If you have the map open in a browser:** DevTools → Network, reload, and look
-> at which data URLs the map requests (filter for `kubra`, `json`, or `.json`).
-> That one observation would resolve it. Set the answer as the `COMED_INSTANCE_ID`
-> and `COMED_VIEW_ID` repository variables, or pass `--instance` / `--view`.
+> Those endpoints resolve and return well-formed data — **but the pointer has
+> been frozen at `2020_11_16_18_00_46` for years.** That host is decommissioned
+> and still serving its final 2020 snapshot. ComEd's live map is the Angular
+> application under `www.comed.com/Outages/CheckOutageStatus/`, whose data
+> endpoint has not yet been identified.
 >
-> To see the dashboard itself in the meantime: `npm run demo -- --open`.
+> **Two guards exist because both failure modes have already happened here.** A
+> territory check rejects any source whose service area falls outside northern
+> Illinois — added after a pair published online as "ComEd's" turned out to serve
+> Michigan and briefly produced a dashboard of Detroit outages. And iFactor
+> directory names are timestamped, so staleness is detectable rather than
+> invisible. Wrong data that looks right is the failure worth engineering
+> against; both of these were caught only because a longitude and a date happened
+> to be obviously wrong.
+>
+> Until a live endpoint is found the scheduled poll fails deliberately rather
+> than publishing anything. To see the dashboard: `npm run demo -- --open`.
+>
+> Field notes, including the payload shapes, are in
+> [`docs/endpoint-notes.md`](docs/endpoint-notes.md).
 
 ---
 
