@@ -33,6 +33,11 @@ const KNOWN_CONFIGS = [
   'https://outagemap.comed.com/scripts/mobile/stormcenter.js',
 ];
 
+// ComEd runs iFactor-era Storm Center, which has no instance/view GUIDs at all.
+// What matters there is where the layers point: the *_config.js files name the
+// tile directories and data URLs the map actually reads. Library code is noise.
+const isInteresting = (url) => /config|\.html|\/$/i.test(url) && !/bm8|infobox|styles/i.test(url);
+
 export async function runDiagnose({ write = (s) => process.stdout.write(s) } = {}) {
   const http = new HttpClient({ concurrency: 6 });
   const targets = [...PAGES];
@@ -65,6 +70,11 @@ export async function runDiagnose({ write = (s) => process.stdout.write(s) } = {
 
     for (const guid of res.body.match(GUID_RE) ?? []) {
       if (!allGuids.has(guid)) allGuids.set(guid, url);
+    }
+
+    if (!isInteresting(url)) {
+      write('  (library code — skipped; only *_config.js name the data sources)\n');
+      continue;
     }
 
     if (res.body.length <= FULL_DUMP_LIMIT) {
