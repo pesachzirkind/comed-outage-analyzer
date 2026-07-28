@@ -41,13 +41,16 @@ const SCRIPT_SRC_RE = /<script[^>]+src=["']([^"']+)["']/gi;
 // because a Storm Center page references a lot of them.
 const MAX_SCRIPTS_PER_PAGE = 12;
 
-// Last-resort candidates, taken from public write-ups of ComEd's Storm Center.
-// These are NEVER trusted on their own: each is probed against currentState and
-// used only if it returns a usable data path, so a stale entry costs one failed
-// request rather than a wrong answer.
-const KNOWN_CANDIDATES = [
-  { instanceId: '4fbb3ad3-e01d-4d71-9575-d453769c1171', viewId: '8ed2824a-bd92-474e-a7c4-848b812b7f9b' },
-];
+// Deliberately empty. A pair published in third-party write-ups as "ComEd's"
+// (4fbb3ad3-…/8ed2824a-…) turned out to serve a Michigan utility: it answered
+// currentState perfectly and returned outages around Detroit. Probing proves an
+// instance is alive, not that it is the right one, so guessing IDs is off the
+// table — territory is verified below instead.
+const KNOWN_CANDIDATES = [];
+
+// ComEd serves northern Illinois. Any Storm Center instance whose own service
+// area falls outside this is not ComEd, however well it responds.
+export const COMED_TERRITORY = { west: -90.5, south: 40.2, east: -87.0, north: 42.8 };
 
 // ComEd is northern Illinois. Zoom 7 tiles are ~200km, so the whole territory
 // is a handful of tiles — a cheap starting point for the crawl.
@@ -61,6 +64,7 @@ export class KubraClient {
     http = new HttpClient(),
     maxZoom = 11,
     maxRequests = 1500,
+    allowAnyTerritory = false,
     log = () => {},
   } = {}) {
     this.instanceId = instanceId;
@@ -68,6 +72,8 @@ export class KubraClient {
     this.http = http;
     this.maxZoom = Math.min(maxZoom, MAX_ZOOM);
     this.maxRequests = maxRequests;
+    this.allowAnyTerritory = allowAnyTerritory;
+    this.discoveryTrace = [];
     this.log = log;
   }
 
@@ -84,11 +90,12 @@ export class KubraClient {
       return { instanceId: this.instanceId, viewId: this.viewId };
     }
 
-    const candidateViews = new Set();
-    const candidateGuids = new Set();
+    const candidateViews = (this.discoveryViews = new Set());
+    const candidateGuids = (this.discoveryGuids = new Set());
     // Every fetch is recorded so a failure explains itself in CI logs rather
     // than just saying "not found".
     const trace = [];
+    this.discoveryTrace = trace;
 
     const scan = (text, source) => {
       const direct = text.match(PAIR_RE);
@@ -143,8 +150,10 @@ export class KubraClient {
 
     throw new Error(
       'Could not auto-discover the ComEd Storm Center IDs.\n\n' +
-        `What was tried (${candidateGuids.size} GUIDs seen, ${candidateViews.size} view candidates):\n` +
+        `What was tried:\n` +
         trace.map((line) => `  ${line}`).join('\n') +
+        `\n\nGUIDs seen (${candidateGuids.size}); none paired with a view that answered currentState:\n` +
+        [...candidateGuids].slice(0, 40).map((g) => `  ${g}${candidateViews.has(g) ? '  (also seen as a view)' : ''}`).join('\n') +
         '\n\nFix it in one minute:\n' +
         '  1. Open https://outagemap.comed.com/ in a browser\n' +
         '  2. Open DevTools -> Network, filter for "currentState"\n' +
@@ -230,8 +239,11 @@ export class KubraClient {
 
     return {
       totalOutages: numberOrNull(totals.total_outages),
-      customersOut: numberOrNull(totals.total_custs_out ?? totals.total_cust_a),
-      customersServed: numberOrNull(totals.total_cust_s ?? totals.total_customers),
+      // Kubra wraps some totals in { val }: total_cust_a is an object, while
+      // total_cust_s is a bare number. Unwrap before coercing, or Number()
+      // quietly yields NaN and the headline count vanishes.
+      customersOut: numberOrNull(unwrap(totals.total_custs_out ?? totals.total_cust_a)),
+      customersServed: numberOrNull(unwrap(totals.total_cust_s ?? totals.total_customers)),
       generatedAt: summary?.summaryFileData?.date_generated ?? totals.date_generated ?? null,
       // Some deployments carry a per-area breakdown here. Keep it when present:
       // it is cheaper and more authoritative than our own geographic bucketing.
@@ -344,6 +356,30 @@ export class KubraClient {
     return { outages: [...outages.values()], truncated };
   }
 
+  /**
+   * Refuse to report another utility's outages as ComEd's.
+   *
+   * A Storm Center instance answering every request correctly is not evidence
+   * it is the right instance — a published "ComEd" pair turned out to serve
+   * Michigan, and without this check the dashboard showed Detroit outages under
+   * a ComEd headline. Wrong data that looks right is worse than no data.
+   */
+  assertComEdTerritory(serviceArea) {
+    if (this.allowAnyTerritory || !serviceArea) return;
+    if (bboxesOverlap(serviceArea, COMED_TERRITORY)) return;
+
+    throw new Error(
+      'This Storm Center instance is not ComEd.\n' +
+        `  Its service area spans lat ${serviceArea.south.toFixed(2)}..${serviceArea.north.toFixed(2)}, ` +
+        `lon ${serviceArea.west.toFixed(2)}..${serviceArea.east.toFixed(2)},\n` +
+        `  which does not overlap northern Illinois ` +
+        `(lat ${COMED_TERRITORY.south}..${COMED_TERRITORY.north}, lon ${COMED_TERRITORY.west}..${COMED_TERRITORY.east}).\n` +
+        `  Instance ${this.instanceId} / view ${this.viewId} belongs to a different utility.\n` +
+        '  Re-check the IDs, or pass --allow-any-territory if you are deliberately\n' +
+        '  pointing this at another Kubra utility.',
+    );
+  }
+
   /** One complete poll: session, summary, and the outage list. */
   async poll() {
     const session = await this.openSession();
@@ -354,7 +390,10 @@ export class KubraClient {
       `  summary: ${fmt(summary.customersOut)} customers out across ${fmt(summary.totalOutages)} outages`,
     );
 
-    const bbox = (await this.fetchServiceAreaBbox(session)) ?? COMED_FALLBACK_BBOX;
+    const serviceArea = await this.fetchServiceAreaBbox(session);
+    this.assertComEdTerritory(serviceArea);
+
+    const bbox = serviceArea ?? COMED_FALLBACK_BBOX;
     const { outages, truncated } = await this.fetchOutages(session, bbox);
 
     const mappedCustomers = outages.reduce((sum, o) => sum + (o.customersAffected ?? 0), 0);
@@ -461,9 +500,19 @@ function normalizeTime(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+/** Kubra reports some totals as { val: n } and others as bare numbers. */
+function unwrap(value) {
+  return value !== null && typeof value === 'object' && 'val' in value ? value.val : value;
+}
+
 function numberOrNull(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Do two bounding boxes share any area? */
+export function bboxesOverlap(a, b) {
+  return a.west <= b.east && a.east >= b.west && a.south <= b.north && a.north >= b.south;
 }
 
 const fmt = (n) => (n === null || n === undefined ? '?' : n.toLocaleString('en-US'));

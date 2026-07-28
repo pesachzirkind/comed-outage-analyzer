@@ -55,6 +55,10 @@ Options
   --interval <min>   Polling interval for serve/watch (default 10). Rates are broken
                      out at 5m/15m/30m/1h/3h/6h/24h — poll at least as often as
                      the shortest window you care about.
+  --allow-any-territory
+                     Skip the check that the Storm Center instance actually
+                     serves northern Illinois. Only for pointing this at a
+                     different Kubra utility on purpose.
   --keep-hours <h>   Delete snapshots older than this after each poll. Off by
                      default; used by the scheduled workflow to bound repo size.
   --data-dir <path>  Where snapshots live (default ./data)
@@ -167,6 +171,7 @@ async function runPoll({ dataDir, options, log }) {
     viewId: firstSet(options.view, process.env.COMED_VIEW_ID, useCached ? config.viewId : null),
     maxZoom: Number(options['max-zoom'] ?? 11),
     maxRequests: Number(options['max-requests'] ?? 1500),
+    allowAnyTerritory: options['allow-any-territory'] === true,
     http: new HttpClient({ concurrency: 8 }),
     log,
   });

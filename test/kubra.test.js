@@ -290,21 +290,25 @@ test('discovery finds the GUID pair inside a linked script bundle', async () => 
   assert.deepEqual(await client.discoverIds(), { instanceId, viewId });
 });
 
-test('a known published pair is used only after currentState validates it', async () => {
-  const known = { instanceId: '4fbb3ad3-e01d-4d71-9575-d453769c1171', viewId: '8ed2824a-bd92-474e-a7c4-848b812b7f9b' };
+test('a live-but-unverified pair is never adopted just because it responds', async () => {
+  // This exact pair is published in third-party write-ups as ComEd's. It is
+  // not — it serves southeast Michigan. It answers currentState perfectly,
+  // which is precisely why responding must not count as proof of identity.
+  const published = {
+    instanceId: '4fbb3ad3-e01d-4d71-9575-d453769c1171',
+    viewId: '8ed2824a-bd92-474e-a7c4-848b812b7f9b',
+  };
 
-  // Nothing scrapable, but the known pair answers currentState.
-  const accepted = new KubraClient({
-    http: new FakeHttp({
-      [`https://kubra.io/stormcenter/api/v1/stormcenters/${known.instanceId}/views/${known.viewId}/currentState?preview=false`]:
-        { data: { interval_generation_data: 'some/path' } },
-    }),
+  const http = new FakeHttp({
+    [`https://kubra.io/stormcenter/api/v1/stormcenters/${published.instanceId}/views/${published.viewId}/currentState?preview=false`]:
+      { data: { interval_generation_data: 'some/path' } },
   });
-  assert.deepEqual(await accepted.discoverIds(), known);
 
-  // Same pair, but currentState rejects it — it must not be adopted.
-  const rejected = new KubraClient({ http: new FakeHttp() });
-  await assert.rejects(() => rejected.discoverIds(), /Could not auto-discover/);
+  await assert.rejects(
+    () => new KubraClient({ http }).discoverIds(),
+    /Could not auto-discover/,
+    'a responding instance that was never scraped from ComEd must not be used',
+  );
 });
 
 test('a failed discovery reports what it actually tried', async () => {
@@ -314,9 +318,44 @@ test('a failed discovery reports what it actually tried', async () => {
     (error) => {
       assert.match(error.message, /What was tried/);
       assert.match(error.message, /outagemap\.comed\.com\/ -> HTTP 404/);
-      assert.match(error.message, /rejected by currentState/);
+      assert.match(error.message, /GUIDs seen/);
       assert.match(error.message, /COMED_INSTANCE_ID/);
       return true;
     },
   );
+});
+
+test('an instance serving the wrong territory is rejected, not reported as ComEd', async () => {
+  const client = new KubraClient({ http: new FakeHttp(), instanceId: 'i', viewId: 'v' });
+
+  // Southeast Michigan — the real service area of a pair published as "ComEd's".
+  assert.throws(
+    () => client.assertComEdTerritory({ west: -83.9, south: 41.9, east: -82.5, north: 43.1 }),
+    /not ComEd/,
+  );
+
+  // Northern Illinois passes.
+  assert.doesNotThrow(() =>
+    client.assertComEdTerritory({ west: -89.9, south: 40.9, east: -87.5, north: 42.5 }),
+  );
+
+  // Opt out only when asked.
+  const anywhere = new KubraClient({ http: new FakeHttp(), allowAnyTerritory: true });
+  assert.doesNotThrow(() =>
+    anywhere.assertComEdTerritory({ west: -83.9, south: 41.9, east: -82.5, north: 43.1 }),
+  );
+});
+
+test('summary totals are unwrapped from the Kubra { val } shape', async () => {
+  const http = new FakeHttp({
+    [`https://kubra.io/${SESSION.dataPath}/public/summary-1/data.json`]: {
+      // The real shape: cust_a is an object, cust_s is a bare number.
+      summaryFileData: { totals: [{ total_cust_a: { val: 168 }, total_cust_s: 2265680, total_outages: 62 }] },
+    },
+  });
+
+  const summary = await new KubraClient({ http }).fetchSummary(SESSION);
+  assert.equal(summary.customersOut, 168, 'must not become NaN/null');
+  assert.equal(summary.customersServed, 2265680);
+  assert.equal(summary.totalOutages, 62);
 });
