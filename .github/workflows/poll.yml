@@ -61,7 +61,7 @@ jobs:
       # endpoint you cannot reach from a dev machine otherwise means guessing.
       - name: Diagnose the endpoints
         if: failure()
-        run: node comed.js diagnose
+        run: node comed.js diagnose --live
 
       - name: Build the dashboard
         run: node comed.js html --out _site/index.html

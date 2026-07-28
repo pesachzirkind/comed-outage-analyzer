@@ -148,9 +148,16 @@ async function main() {
       break;
 
     case 'diagnose': {
-      const { runDiagnose, probeIFactor } = await import('./src/diagnose.js');
-      await runDiagnose();
-      await probeIFactor();
+      const { runDiagnose, probeIFactor, probeAngular } = await import('./src/diagnose.js');
+      // --live keeps the log short when the question is only about the current
+      // map; the full sweep is noisy enough to bury the answer.
+      if (options.live) {
+        await probeAngular();
+      } else {
+        await runDiagnose();
+        await probeIFactor();
+        await probeAngular();
+      }
       break;
     }
 

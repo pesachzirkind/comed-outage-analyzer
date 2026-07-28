@@ -194,3 +194,85 @@ export async function probeIFactor({ write = (s) => process.stdout.write(s) } = 
     }
   }
 }
+
+// --- live (Angular) map probe ----------------------------------------------
+//
+// ComEd's current map is an Angular app. Its bundles cannot be found by
+// guessing paths: the server answers any unknown path under that directory
+// with the same shell, so a wrong guess looks like a 200. The shell is
+// therefore compared byte-for-byte against every candidate — anything equal to
+// it is the fallback, not a file — and whatever is genuinely different gets
+// scanned for the URLs the app calls at runtime.
+
+const LIVE_PAGE = 'https://www.comed.com/Outages/CheckOutageStatus/Pages/OutageMap.aspx';
+
+// Strings that look like a data endpoint rather than an asset.
+const ENDPOINT_HINTS =
+  /(https?:\/\/[^"'`\s)]{8,140})|((?:\/[\w.-]+){1,6}\/(?:metadata\.xml|data\.js|[\w.-]*outage[\w.-]*\.(?:json|js|xml)))/gi;
+
+export async function probeAngular({ write = (s) => process.stdout.write(s) } = {}) {
+  const http = new HttpClient({ concurrency: 6 });
+  write('\n' + '='.repeat(72) + '\nLive map (Angular) probe\n' + '='.repeat(72) + '\n');
+
+  const shell = await safeGet(http, LIVE_PAGE);
+  write(`\n${LIVE_PAGE}\n  HTTP ${shell.status} · ${shell.body.length} bytes\n`);
+  if (!shell.ok) return;
+  write('--- shell HTML ---\n' + shell.body + '\n--- end ---\n');
+
+  const baseHref = /<base[^>]+href=["']([^"']+)["']/i.exec(shell.body)?.[1] ?? null;
+  write(`\n  <base href> = ${baseHref ?? '(none)'}\n`);
+
+  // Resolve every referenced asset against the base href AND the page, plus a
+  // few roots Angular deployments commonly use.
+  const referenced = [...shell.body.matchAll(SCRIPT_SRC_RE)].map((m) => m[1]);
+  write(`  referenced scripts: ${JSON.stringify(referenced)}\n`);
+
+  const roots = [
+    baseHref ? new URL(baseHref, LIVE_PAGE).toString() : null,
+    new URL('.', LIVE_PAGE).toString(),
+    'https://www.comed.com/Outages/CheckOutageStatus/',
+    'https://www.comed.com/',
+  ].filter(Boolean);
+
+  const tried = new Set();
+  const realFiles = [];
+
+  for (const name of referenced) {
+    for (const root of roots) {
+      let url;
+      try {
+        url = new URL(name, root).toString();
+      } catch {
+        continue;
+      }
+      if (tried.has(url)) continue;
+      tried.add(url);
+
+      const res = await safeGet(http, url);
+      // The SPA fallback returns the shell verbatim; that is a miss, not a hit.
+      const isFallback = res.ok && res.body === shell.body;
+      write(`  ${url} -> HTTP ${res.status}${res.ok ? ` · ${res.body.length}B` : ''}${isFallback ? '  (shell fallback)' : ''}\n`);
+      if (res.ok && !isFallback && res.body.length > 500) realFiles.push({ url, body: res.body });
+    }
+  }
+
+  if (realFiles.length === 0) {
+    write('\n  No real bundle reachable — every candidate returned the shell.\n');
+    write('  The asset base is elsewhere; the endpoint cannot be read from here.\n');
+    return;
+  }
+
+  for (const file of realFiles) {
+    write(`\n--- endpoint-like strings in ${file.url} ---\n`);
+    const seen = new Set();
+    for (const match of file.body.matchAll(ENDPOINT_HINTS)) {
+      const hit = match[0];
+      if (seen.has(hit) || seen.size >= 60) continue;
+      if (/\.(png|jpg|svg|gif|woff2?|css|ico)$/i.test(hit)) continue;
+      if (/w3\.org|schemas\.|googleapis|gstatic|jquery|bootstrap/i.test(hit)) continue;
+      seen.add(hit);
+      write(`  ${hit}\n`);
+    }
+    if (seen.size === 0) write('  (none)\n');
+  }
+}
