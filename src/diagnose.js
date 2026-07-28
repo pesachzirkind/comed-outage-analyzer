@@ -111,3 +111,60 @@ async function safeGet(http, url) {
     return { ok: false, status: error.message, body: '', url };
   }
 }
+
+// --- iFactor data protocol probe -------------------------------------------
+//
+// ComEd's map polls a directory pointer rather than calling an API:
+//
+//   data/interval_generation_data/metadata.xml   -> current <directory>
+//   {dir}/data.js                                -> system totals
+//   {dir}/thematic/thematic_areas.js             -> per-county aggregates
+//   {dir}/outages/<index>.js                     -> individual outages
+//
+// The exact path composition lives in a customGetFullDataDirectory function we
+// cannot read, so this tries the plausible arrangements and prints what sticks.
+
+const IFACTOR_BASE = 'https://outagemap.comed.com/';
+
+export async function probeIFactor({ write = (s) => process.stdout.write(s) } = {}) {
+  const http = new HttpClient({ concurrency: 4 });
+  const show = async (label, url, limit = 2500) => {
+    const res = await safeGet(http, url);
+    write(`\n### ${label}\n${url}\n  HTTP ${res.status}${res.ok ? ` · ${res.body.length} bytes` : ''}\n`);
+    if (res.ok) write(res.body.slice(0, limit) + (res.body.length > limit ? '\n  …truncated…\n' : '\n'));
+    return res;
+  };
+
+  write('\n' + '='.repeat(72) + '\niFactor data protocol probe\n' + '='.repeat(72) + '\n');
+
+  const metadata = await show('metadata pointer', `${IFACTOR_BASE}data/interval_generation_data/metadata.xml`);
+  if (!metadata.ok) return;
+
+  // The pointer is XML; grab every element that could name a directory.
+  const directories = [...metadata.body.matchAll(/<(\w*directory\w*)>([^<]+)<\/\1>/gi)].map((m) => m[2].trim());
+  write(`\n  parsed directory values: ${JSON.stringify(directories)}\n`);
+  if (directories.length === 0) return;
+
+  for (const directory of [...new Set(directories)].slice(0, 3)) {
+    // Both arrangements seen in iFactor deployments: the pointer is either a
+    // full path from the web root, or a leaf under the data directory.
+    const bases = [
+      `${IFACTOR_BASE}${directory.replace(/^\/+/, '')}`,
+      `${IFACTOR_BASE}data/interval_generation_data/${directory.replace(/^\/+/, '')}`,
+    ];
+
+    for (const base of bases) {
+      const overview = await show(`overview for "${directory}"`, `${base.replace(/\/+$/, '')}/data.js`, 1800);
+      if (!overview.ok) continue;
+
+      await show('per-county aggregates', `${base.replace(/\/+$/, '')}/thematic/thematic_areas.js`, 3000);
+      await show('per-ZIP aggregates', `${base.replace(/\/+$/, '')}/thematiczip/thematic_areas.js`, 800);
+
+      // indexvectorlayer: an index names the tiles that actually hold outages.
+      for (const candidate of ['index.js', 'data.js', '0.js', '03.js', '030.js']) {
+        await show(`outages/${candidate}`, `${base.replace(/\/+$/, '')}/outages/${candidate}`, 900);
+      }
+      return; // first arrangement that works is the real one
+    }
+  }
+}

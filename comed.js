@@ -148,8 +148,9 @@ async function main() {
       break;
 
     case 'diagnose': {
-      const { runDiagnose } = await import('./src/diagnose.js');
+      const { runDiagnose, probeIFactor } = await import('./src/diagnose.js');
       await runDiagnose();
+      await probeIFactor();
       break;
     }
 
