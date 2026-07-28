@@ -7,10 +7,33 @@ Polls the [ComEd outage map](https://outagemap.comed.com/), saves a snapshot eac
 time, and tells you what changed: **how many customers and how many outages were
 fixed, how fast, and which areas are recovering faster than others.**
 
-📊 **Live dashboard: <https://pesachzirkind.github.io/comed-outage-analyzer/>**
-— rebuilt every 10 minutes by GitHub Actions.
-
 Zero dependencies. Node 18+ (uses built-in `fetch`).
+
+> ## ⚠️ Status: not yet pulling live ComEd data
+>
+> Everything in this repo works and is tested — the tile crawler, the gross/net
+> analysis, the dashboard, and the scheduled workflow have all run green against
+> a real KUBRA Storm Center instance end to end.
+>
+> What is unresolved is locating **ComEd's** instance. `outagemap.comed.com` is a
+> 733-byte redirect stub; the real page loads *iFactor-era* Storm Center scripts
+> (`IFactorLayersHandler.js`, `IFactorDataMonitor.js`), which is an older product
+> generation than the `kubra.io/stormcenter/api/v1/…` API this client is built
+> against. Twenty GUIDs were harvested from those pages and none of their
+> combinations answer `currentState`, so ComEd's map may not use that API at all.
+>
+> Until that is resolved the scheduled poll fails deliberately rather than
+> publishing anything, and there is no Pages site. A guard rejects any instance
+> whose service area falls outside northern Illinois — added after a pair
+> published online as "ComEd's" turned out to serve Michigan and briefly produced
+> a dashboard of Detroit outages labelled as ComEd.
+>
+> **If you have the map open in a browser:** DevTools → Network, reload, and look
+> at which data URLs the map requests (filter for `kubra`, `json`, or `.json`).
+> That one observation would resolve it. Set the answer as the `COMED_INSTANCE_ID`
+> and `COMED_VIEW_ID` repository variables, or pass `--instance` / `--view`.
+>
+> To see the dashboard itself in the meantime: `npm run demo -- --open`.
 
 ---
 
@@ -146,7 +169,12 @@ precise area — your block, a specific suburb — and it beats any centroid.
 
 `.github/workflows/poll.yml` runs every 10 minutes: it polls, rebuilds the
 dashboard, and deploys it to GitHub Pages. Public repos get free Actions minutes
-and free Pages, so this costs nothing.
+and free Pages, so this costs nothing. (See the status note at the top — the poll
+step currently fails on purpose until ComEd's Storm Center instance is identified.)
+
+Pages also has to be switched on once by hand: **Settings → Pages → Source →
+GitHub Actions**. The workflow asks `configure-pages` to enable it automatically,
+but that call needs a permission the default Actions token does not carry.
 
 Snapshot history lives on an orphan `data` branch, force-pushed as a single
 commit each run. Committing to `main` instead would grow the repo forever — 144
