@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 18 is the floor (built-in fetch); 22 is what the workflows run.
+        node-version: ['18', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm test
+
+      # The demo path exercises analysis and rendering end to end without
+      # touching the network, so a broken dashboard fails CI rather than
+      # showing up as a blank page after a deploy.
+      - run: node comed.js demo --data-dir /tmp/demo --out /tmp/demo/index.html
+      - name: Check the dashboard actually rendered
+        run: |
+          test -s /tmp/demo/index.html
+          grep -q "ComEd Outage Analyzer" /tmp/demo/index.html
+          grep -q "Synthetic data" /tmp/demo/index.html

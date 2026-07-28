@@ -2,3 +2,5 @@
 data/
 dashboard.html
 zones.json
+_site/
+node_modules/

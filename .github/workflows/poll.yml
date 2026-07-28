@@ -1,0 +1,78 @@
+name: Poll ComEd
+
+# Every 10 minutes: fetch a snapshot, rebuild the dashboard, publish to Pages.
+#
+# Snapshot history lives on an orphan `data` branch that is force-pushed as a
+# single commit each run. Committing to main instead would grow the repository
+# forever — 144 commits a day, each carrying a full outage list — and nothing
+# here benefits from that history being replayable.
+#
+# GitHub delays scheduled workflows under load, so the gaps between snapshots
+# are irregular. That is fine: every rate the tool reports is computed from the
+# span actually measured, and windows finer than the real interval are flagged.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: poll
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Restore snapshot history
+        run: |
+          if git fetch origin data 2>/dev/null; then
+            git checkout FETCH_HEAD -- data/ || echo "data branch has no snapshots yet"
+          else
+            echo "No data branch yet — this is the first run."
+          fi
+
+      - name: Poll the outage map
+        run: node comed.js poll --keep-hours 72
+
+      - name: Build the dashboard
+        run: node comed.js html --out _site/index.html
+
+      - name: Publish the JSON feed alongside it
+        run: node comed.js report --json > _site/data.json
+
+      - name: Save snapshot history
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan data-tmp
+          git rm -rf --cached . > /dev/null
+          git add -f data/
+          git commit -q -m "Snapshots as of $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push -f origin data-tmp:data
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: poll
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

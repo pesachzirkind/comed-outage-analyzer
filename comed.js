@@ -7,8 +7,8 @@
 // Everything else is a smaller piece of those two.
 
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 import { analyzeHistory, sinceAnchor } from './src/analyze.js';
 import { HttpClient } from './src/http.js';
@@ -204,6 +204,7 @@ function printReport({ dataDir, zones, options }) {
 function buildHtml({ dataDir, zones, outPath, options, log }) {
   const snapshots = loadSnapshots(dataDir);
   const analysis = analyzeHistory(snapshots, zones);
+  mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, renderHtml(analysis));
   log(`Dashboard: ${outPath}`);
   if (options.open) openInBrowser(outPath);
