@@ -20,6 +20,10 @@ const CONTEXT_CHARS = 90;
 const PAGES = [
   'https://outagemap.comed.com/',
   'https://outagemap.comed.com/m.html',
+  // ComEd's current map. Its hashed bundles cannot be fetched by guessed path —
+  // the server returns this shell for anything unknown — so the shell's own
+  // <base href> and script tags are the way in.
+  'https://www.comed.com/Outages/CheckOutageStatus/Pages/OutageMap.aspx',
 ];
 
 // Storm Center 4.x keeps its wiring here. Fetched directly rather than waiting
@@ -36,7 +40,8 @@ const KNOWN_CONFIGS = [
 // ComEd runs iFactor-era Storm Center, which has no instance/view GUIDs at all.
 // What matters there is where the layers point: the *_config.js files name the
 // tile directories and data URLs the map actually reads. Library code is noise.
-const isInteresting = (url) => /config|\.html|\/$/i.test(url) && !/bm8|infobox|styles/i.test(url);
+const isInteresting = (url) =>
+  /config|\.html|\.aspx|\/$/i.test(url) && !/bm8|infobox|styles/i.test(url);
 
 export async function runDiagnose({ write = (s) => process.stdout.write(s) } = {}) {
   const http = new HttpClient({ concurrency: 6 });
