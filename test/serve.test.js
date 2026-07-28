@@ -39,8 +39,8 @@ test('the server renders the live dashboard at the root', async () => {
   assert.match(res.headers.get('content-type'), /text\/html/);
 
   const html = await res.text();
-  assert.match(html, /ComEd outage analyzer/);
-  assert.match(html, /Synthetic demo data/, 'demo snapshots must be labelled');
+  assert.match(html, /ComEd Outage Analyzer/);
+  assert.match(html, /Synthetic data/, 'demo snapshots must be labelled');
   assert.match(html, /\/api\.json/, 'served pages carry the auto-refresh poller');
 });
 

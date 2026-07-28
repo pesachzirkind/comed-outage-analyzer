@@ -230,3 +230,28 @@ test('a single snapshot yields no rates but does not crash', () => {
 test('an empty history is reported as empty', () => {
   assert.equal(analyzeHistory([], DEFAULT_ZONES).empty, true);
 });
+
+test('pruning drops old snapshots but never the two needed for a diff', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { listSnapshotPaths, pruneSnapshots, saveSnapshot } = await import('../src/storage.js');
+
+  const dir = mkdtempSync(join(tmpdir(), 'comed-prune-'));
+  const now = Date.now();
+  // Five snapshots spanning 10 hours, oldest first.
+  for (const hoursAgo of [10, 8, 6, 1, 0]) {
+    saveSnapshot(
+      dir,
+      snapshot(new Date(now - hoursAgo * 3600 * 1000).toISOString(), [outage('A', 100)]),
+    );
+  }
+
+  const removed = pruneSnapshots(dir, { keepHours: 5 });
+  assert.equal(removed.length, 3, 'the 10h, 8h and 6h snapshots go');
+  assert.equal(listSnapshotPaths(dir).length, 2);
+
+  // A no-op retention leaves everything alone.
+  assert.deepEqual(pruneSnapshots(dir, { keepHours: 0 }), []);
+  assert.equal(listSnapshotPaths(dir).length, 2);
+});

@@ -20,6 +20,7 @@ import {
   DEFAULT_DATA_DIR,
   loadConfig,
   loadSnapshots,
+  pruneSnapshots,
   saveConfig,
   saveSnapshot,
 } from './src/storage.js';
@@ -54,6 +55,8 @@ Options
   --interval <min>   Polling interval for serve/watch (default 10). Rates are broken
                      out at 5m/15m/30m/1h/3h/6h/24h — poll at least as often as
                      the shortest window you care about.
+  --keep-hours <h>   Delete snapshots older than this after each poll. Off by
+                     default; used by the scheduled workflow to bound repo size.
   --data-dir <path>  Where snapshots live (default ./data)
   --zones <path>     Custom zone definitions (see zones.example.json)
   --out <path>       Dashboard output path (default ./dashboard.html)
@@ -170,6 +173,12 @@ async function runPoll({ dataDir, options, log }) {
       viewId: client.viewId,
       lastPollAt: snapshot.capturedAt,
     });
+  }
+
+  const keepHours = Number(options['keep-hours']);
+  if (Number.isFinite(keepHours) && keepHours > 0) {
+    const removed = pruneSnapshots(dataDir, { keepHours });
+    if (removed.length > 0) log(`Pruned ${removed.length} snapshots older than ${keepHours}h`);
   }
 
   log(`Saved ${path}`);

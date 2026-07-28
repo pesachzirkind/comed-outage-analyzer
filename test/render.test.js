@@ -50,7 +50,7 @@ test('the dashboard is self-contained and renders the key sections', () => {
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /How much has been fixed/);
   assert.match(html, /Customers out over time/);
-  assert.match(html, /Restoration vs\. new outages/);
+  assert.match(html, /Fixed vs\. newly out/);
   assert.match(html, /Which areas are recovering fastest/);
   assert.match(html, /Outages fixed/);
 
@@ -65,8 +65,8 @@ test('the dashboard is self-contained and renders the key sections', () => {
 
   // A legend exists for the two-series chart, so identity is never colour-alone.
   assert.match(html, /class="legend"/);
-  assert.match(html, /Restored/);
-  assert.match(html, /Newly out/);
+  assert.match(html, /Fixed<\/span>/);
+  assert.match(html, /Newly out<\/span>/);
 });
 
 test('zone names are HTML-escaped', () => {
