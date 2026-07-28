@@ -41,6 +41,10 @@ const SCRIPT_SRC_RE = /<script[^>]+src=["']([^"']+)["']/gi;
 // because a Storm Center page references a lot of them.
 const MAX_SCRIPTS_PER_PAGE = 12;
 
+// Upper bound on the pair search, so a page full of GUIDs cannot turn one poll
+// into thousands of requests.
+const MAX_PROBE_PAIRS = 400;
+
 // Deliberately empty. A pair published in third-party write-ups as "ComEd's"
 // (4fbb3ad3-…/8ed2824a-…) turned out to serve a Michigan utility: it answered
 // currentState perfectly and returned outages around Detroit. Probing proves an
@@ -122,18 +126,36 @@ export class KubraClient {
       }
     }
 
-    // No literal pair anywhere. Try the collected GUIDs against currentState —
-    // the right combination is the only one that returns a usable data path.
-    for (const viewId of candidateViews) {
-      for (const instanceId of candidateGuids) {
-        if (instanceId === viewId) continue;
-        if (await this._probe(instanceId, viewId)) {
-          this.instanceId = instanceId;
-          this.viewId = viewId;
-          this.log(`  discovery: probed pair ${instanceId} / ${viewId}`);
-          return { instanceId, viewId };
-        }
+    // No literal pair anywhere — ComEd's map is Storm Center 4.x, whose config
+    // does not use the stormcenters/<id>/views/<id> URL shape at all. So pair
+    // the harvested GUIDs up and ask the API which combination is real.
+    //
+    // Restricted to lowercase GUIDs: Kubra writes them lowercase, while the
+    // uppercase ones on these pages are SharePoint/.NET artifacts. That keeps
+    // the search to a few dozen requests, and every hit still has to satisfy
+    // currentState and then the territory check before it is believed.
+    const lowercase = [...candidateGuids].filter((guid) => guid === guid.toLowerCase());
+    const seenPair = new Set();
+    const pairs = [];
+    for (const viewId of [...candidateViews, ...lowercase]) {
+      for (const instanceId of lowercase) {
+        const key = `${instanceId}|${viewId}`;
+        if (instanceId === viewId || seenPair.has(key)) continue;
+        seenPair.add(key);
+        pairs.push({ instanceId, viewId });
       }
+    }
+
+    if (pairs.length > 0) {
+      this.log(`  discovery: probing ${pairs.length} GUID combinations`);
+      const found = await this._probePairs(pairs.slice(0, MAX_PROBE_PAIRS));
+      if (found) {
+        this.instanceId = found.instanceId;
+        this.viewId = found.viewId;
+        this.log(`  discovery: probed pair ${found.instanceId} / ${found.viewId}`);
+        return found;
+      }
+      trace.push(`probed ${Math.min(pairs.length, MAX_PROBE_PAIRS)} GUID combinations, none answered currentState`);
     }
 
     // Still nothing scraped. Fall back to known-published pairs, each validated
@@ -175,6 +197,20 @@ export class KubraClient {
       trace.push(`${indent}${url} -> ${error.message}`);
       return null;
     }
+  }
+
+  /** Probe candidate pairs concurrently, stopping at the first that answers. */
+  async _probePairs(pairs, concurrency = 8) {
+    let index = 0;
+    let winner = null;
+    const workers = Array.from({ length: Math.min(concurrency, pairs.length) }, async () => {
+      while (index < pairs.length && !winner) {
+        const pair = pairs[index++];
+        if (await this._probe(pair.instanceId, pair.viewId)) winner ??= pair;
+      }
+    });
+    await Promise.all(workers);
+    return winner;
   }
 
   async _probe(instanceId, viewId) {

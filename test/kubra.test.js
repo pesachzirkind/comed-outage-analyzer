@@ -369,3 +369,37 @@ test('a wrong-territory rejection is tagged so callers can drop the cached ids',
     assert.equal(error.code, 'WRONG_TERRITORY');
   }
 });
+
+test('discovery pairs up harvested GUIDs and finds the one that answers', async () => {
+  const instanceId = 'aaaaaaaa-1111-2222-3333-444444444444';
+  const viewId = 'bbbbbbbb-5555-6666-7777-888888888888';
+  const decoy = 'cccccccc-9999-0000-1111-222222222222';
+
+  // Storm Center 4.x: the GUIDs appear in config, never as stormcenters/…/views/….
+  const http = new FakeHttp({
+    'https://outagemap.comed.com/m.html': '<script src="/cfg.js"></script>',
+    'https://outagemap.comed.com/cfg.js':
+      `var cfg={a:"${decoy}",b:"${instanceId}",c:"${viewId}"};`,
+    [`https://kubra.io/stormcenter/api/v1/stormcenters/${instanceId}/views/${viewId}/currentState?preview=false`]:
+      { data: { interval_generation_data: 'path/x' } },
+  });
+
+  assert.deepEqual(await new KubraClient({ http }).discoverIds(), { instanceId, viewId });
+});
+
+test('uppercase GUIDs are not paired — they are SharePoint noise, not Kubra ids', async () => {
+  const http = new FakeHttp({
+    'https://outagemap.comed.com/m.html':
+      '<script src="/cfg.js"></script>',
+    'https://outagemap.comed.com/cfg.js':
+      'var a="097A0D85-2585-425A-8471-60BDD3C5B7C3",b="33B050CC-BA4E-4350-A5B7-4171AEC234A2";',
+  });
+
+  const client = new KubraClient({ http });
+  await assert.rejects(() => client.discoverIds(), /Could not auto-discover/);
+  // Only the page fetches happened — no currentState probes for uppercase pairs.
+  assert.ok(
+    !client.http.requested.some((u) => u.includes('currentState')),
+    'uppercase-only GUIDs must not generate probe traffic',
+  );
+});
