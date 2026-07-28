@@ -57,6 +57,12 @@ jobs:
           COMED_VIEW_ID: ${{ vars.COMED_VIEW_ID }}
         run: node comed.js poll --keep-hours 72
 
+      # When the poll fails, print what the map actually serves. Diagnosing an
+      # endpoint you cannot reach from a dev machine otherwise means guessing.
+      - name: Diagnose the endpoints
+        if: failure()
+        run: node comed.js diagnose
+
       - name: Build the dashboard
         run: node comed.js html --out _site/index.html
 

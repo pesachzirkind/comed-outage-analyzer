@@ -45,6 +45,9 @@ Commands
   demo               Generate synthetic snapshots so you can see the output
                      without touching the network.
   status             Show what has been collected so far.
+  diagnose           Dump what ComEd's map actually serves — config files in
+                     full, GUIDs in context. For working out the endpoints when
+                     discovery fails.
 
 Options
   --since <when>     Also report totals fixed since an earlier point:
@@ -143,6 +146,12 @@ async function main() {
     case 'status':
       printStatus({ dataDir });
       break;
+
+    case 'diagnose': {
+      const { runDiagnose } = await import('./src/diagnose.js');
+      await runDiagnose();
+      break;
+    }
 
     default:
       process.stderr.write(`Unknown command: ${command}\n${USAGE}`);
