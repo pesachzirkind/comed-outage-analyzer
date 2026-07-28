@@ -14,6 +14,13 @@ name: Poll ComEd
 on:
   schedule:
     - cron: '*/10 * * * *'
+  # Also on push to main: GitHub can take a long while to start firing a new
+  # repository's schedule, and until this runs once there is no Pages site at
+  # all — just a 404. Running on push bootstraps it, and thereafter means any
+  # change to the crawler is checked against the live map immediately rather
+  # than at the next tick.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
