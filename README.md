@@ -9,43 +9,46 @@ fixed, how fast, and which areas are recovering faster than others.**
 
 Zero dependencies. Node 18+ (uses built-in `fetch`).
 
-> ## ⚠️ Status: not yet pulling live ComEd data
+> ## ⚠️ Status: automated polling is disabled
 >
-> Everything in this repo works and is tested. What is unresolved is which
-> endpoint serves ComEd's *current* outage data.
+> **ComEd now returns HTTP 403 to this project's CI.** That is a direct result
+> of how it was developed: thirteen workflow runs, roughly twenty requests each
+> including repeated multi-megabyte bundle downloads, minutes apart from cloud
+> IP addresses, while the data endpoint was being worked out. That is a traffic
+> pattern a WAF is supposed to block, and it did.
 >
-> **What was established.** ComEd does not use the modern KUBRA instance/view
-> API this tool was first built against — its map contains no GUIDs at all.
-> `outagemap.comed.com` runs iFactor-era Storm Center, whose protocol is a
-> directory pointer rather than an API:
+> The scheduled workflow has been switched off and the diagnostic that pulled
+> those bundles has been removed. Working around the block — rotating user
+> agents, spreading requests across addresses — is not on the table. A site
+> refusing this traffic is a decision to respect, not an obstacle to route
+> around.
 >
-> ```
-> data/interval_generation_data/metadata.xml   -> current {directory}
-> {directory}/data.js                          -> total_outages, total_customers
-> {directory}/thematic/thematic_areas.js       -> per-county aggregates
-> {directory}/thematiczip/thematic_areas.js    -> per-ZIP aggregates
-> ```
+> ### What was learned before that
 >
-> Those endpoints resolve and return well-formed data — **but the pointer has
-> been frozen at `2020_11_16_18_00_46` for years.** That host is decommissioned
-> and still serving its final 2020 snapshot. ComEd's live map is the Angular
-> application under `www.comed.com/Outages/CheckOutageStatus/`, whose data
-> endpoint has not yet been identified.
+> ComEd does **not** use the modern KUBRA instance/view API this tool was first
+> built against; its map contains no such identifiers. `outagemap.comed.com`
+> runs iFactor-era Storm Center, whose full protocol is documented in
+> [`docs/endpoint-notes.md`](docs/endpoint-notes.md) — but its pointer has been
+> frozen at `2020_11_16_18_00_46` for years, so that host is decommissioned.
+> The live map is an Angular app whose bundles are served from the site root,
+> and its data endpoint was not identified before the block.
 >
-> **Two guards exist because both failure modes have already happened here.** A
-> territory check rejects any source whose service area falls outside northern
-> Illinois — added after a pair published online as "ComEd's" turned out to serve
-> Michigan and briefly produced a dashboard of Detroit outages. And iFactor
-> directory names are timestamped, so staleness is detectable rather than
-> invisible. Wrong data that looks right is the failure worth engineering
-> against; both of these were caught only because a longitude and a date happened
-> to be obviously wrong.
+> ### What this repo still is
 >
-> Until a live endpoint is found the scheduled poll fails deliberately rather
-> than publishing anything. To see the dashboard: `npm run demo -- --open`.
+> A complete, tested outage analyzer: gross-vs-net restoration accounting,
+> 5m–24h rate windows, per-area recovery ranking, a dashboard, and a local
+> server — all verified end to end against live KUBRA infrastructure, and usable
+> today against any utility on that platform. Two guards exist because both
+> failure modes actually occurred during development: a **territory check**
+> (a source published as ComEd's turned out to serve Michigan) and **staleness
+> detection** (the frozen 2020 host). Run `npm run demo -- --open` to see it.
 >
-> Field notes, including the payload shapes, are in
-> [`docs/endpoint-notes.md`](docs/endpoint-notes.md).
+> ### To finish the ComEd path
+>
+> Load the map in an ordinary browser, note the data request in the network
+> panel, and set it as a repository variable. One human page-load answers what
+> this much automated probing did not — and does not add to the traffic that
+> caused the block.
 
 ---
 

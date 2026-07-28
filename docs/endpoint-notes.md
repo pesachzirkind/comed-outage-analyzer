@@ -97,3 +97,30 @@ ComEd's live map is the Angular application under
 8421-byte SPA shell for any unknown path, so the real asset base has to be found
 first. Loading the page in a browser and watching the network panel remains the
 fastest way to identify its data endpoint.
+
+## Postscript: we got blocked, and that is the real lesson
+
+After thirteen CI runs, `www.comed.com` began returning **HTTP 403** to the
+runner — the map page and every bundle. Nothing about the site changed; the
+requests did. Each run made about twenty requests, several of them
+multi-megabyte bundle downloads, minutes apart, from cloud IP ranges, for over
+an hour.
+
+That is textbook scraper behaviour and a WAF is meant to stop it. The mistake
+was not any single request but the loop: treating a live third-party service as
+a debugger, re-running against it every few minutes to test one more hypothesis.
+
+Two things follow.
+
+**Do not work around it.** Rotating user agents, spreading requests, or slowing
+down just enough to slip under a threshold are all ways of overriding a decision
+the site has made. The 403 is an answer.
+
+**Read once, then think.** Nearly every round here re-fetched the same files to
+test a guess that could have been checked against material already retrieved.
+`diagnose` should have dumped everything on the first failure — that is why it
+now exists — and the analysis should then have happened offline, against saved
+copies, at no cost to anyone else's infrastructure.
+
+The polling interval was never the problem: the map refreshes every 120 seconds
+and a 10-minute poll is modest. The development traffic was the problem.

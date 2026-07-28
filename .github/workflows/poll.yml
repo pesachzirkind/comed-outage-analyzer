@@ -11,16 +11,18 @@ name: Poll ComEd
 # are irregular. That is fine: every rate the tool reports is computed from the
 # span actually measured, and windows finer than the real interval are flagged.
 
+# DISABLED. Automated polling is switched off deliberately.
+#
+# Repeated probing from CI — thirteen runs, ~20 requests each including
+# multi-megabyte bundle downloads, minutes apart from cloud IPs — got
+# www.comed.com to return 403 to this runner. That is a site telling us our
+# traffic pattern is unwelcome, and the correct response is to stop, not to
+# disguise the requests.
+#
+# Re-enable the schedule only once there is a known, appropriate endpoint and a
+# polling interval that respects it. The map itself refreshes every 120s, so
+# nothing here ever needed to be more aggressive than that.
 on:
-  schedule:
-    - cron: '*/10 * * * *'
-  # Also on push to main: GitHub can take a long while to start firing a new
-  # repository's schedule, and until this runs once there is no Pages site at
-  # all — just a 404. Running on push bootstraps it, and thereafter means any
-  # change to the crawler is checked against the live map immediately rather
-  # than at the next tick.
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -56,12 +58,6 @@ jobs:
           COMED_INSTANCE_ID: ${{ vars.COMED_INSTANCE_ID }}
           COMED_VIEW_ID: ${{ vars.COMED_VIEW_ID }}
         run: node comed.js poll --keep-hours 72
-
-      # When the poll fails, print what the map actually serves. Diagnosing an
-      # endpoint you cannot reach from a dev machine otherwise means guessing.
-      - name: Diagnose the endpoints
-        if: failure()
-        run: node comed.js diagnose --live
 
       - name: Build the dashboard
         run: node comed.js html --out _site/index.html
