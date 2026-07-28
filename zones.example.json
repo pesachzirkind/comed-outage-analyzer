@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "Custom areas for the per-zone breakdown. Copy to zones.json and pass it with",
+    "--zones zones.json. Two forms are supported:",
+    "  { \"name\": \"...\", \"lat\": 41.9, \"lon\": -87.7 }   nearest-centroid (no gaps, no overlaps)",
+    "  { \"name\": \"...\", \"bbox\": [west, south, east, north] }   exact box, wins over any centroid",
+    "Bboxes are checked first, so use one to carve out a precise area you care",
+    "about (your block, a specific suburb) and let centroids handle the rest.",
+    "Anything further than 60km from every centroid is bucketed into a labelled",
+    "grid cell so no customers are silently dropped."
+  ],
+  "zones": [
+    { "name": "My neighborhood", "bbox": [-87.72, 41.94, -87.68, 41.98] },
+    { "name": "Mom's place", "bbox": [-88.12, 41.83, -88.05, 41.88] },
+
+    { "name": "Chicago - North Side", "lat": 41.97, "lon": -87.68 },
+    { "name": "Chicago - Central/Loop", "lat": 41.88, "lon": -87.63 },
+    { "name": "Chicago - West Side", "lat": 41.88, "lon": -87.72 },
+    { "name": "Chicago - South Side", "lat": 41.74, "lon": -87.62 },
+    { "name": "North Suburban Cook", "lat": 42.05, "lon": -87.72 },
+    { "name": "Northwest Cook", "lat": 42.05, "lon": -88.0 },
+    { "name": "West Cook", "lat": 41.88, "lon": -87.85 },
+    { "name": "Southwest Cook", "lat": 41.68, "lon": -87.83 },
+    { "name": "South Cook", "lat": 41.55, "lon": -87.65 },
+    { "name": "DuPage County", "lat": 41.85, "lon": -88.09 },
+    { "name": "Lake County", "lat": 42.33, "lon": -87.98 },
+    { "name": "Will County", "lat": 41.45, "lon": -88.0 },
+    { "name": "Kane County", "lat": 41.94, "lon": -88.43 },
+    { "name": "McHenry County", "lat": 42.32, "lon": -88.45 },
+    { "name": "Kendall County", "lat": 41.59, "lon": -88.43 },
+    { "name": "DeKalb County", "lat": 41.89, "lon": -88.77 },
+    { "name": "Winnebago County", "lat": 42.34, "lon": -89.16 },
+    { "name": "Boone County", "lat": 42.32, "lon": -88.82 },
+    { "name": "Ogle County", "lat": 42.04, "lon": -89.32 },
+    { "name": "Lee County", "lat": 41.74, "lon": -89.3 },
+    { "name": "LaSalle County", "lat": 41.34, "lon": -88.88 },
+    { "name": "Grundy County", "lat": 41.28, "lon": -88.42 },
+    { "name": "Kankakee County", "lat": 41.13, "lon": -87.86 },
+    { "name": "Iroquois County", "lat": 40.75, "lon": -87.83 },
+    { "name": "Livingston County", "lat": 40.89, "lon": -88.56 },
+    { "name": "Ford County", "lat": 40.6, "lon": -88.22 },
+    { "name": "Bureau County", "lat": 41.4, "lon": -89.53 },
+    { "name": "Stephenson County", "lat": 42.35, "lon": -89.66 },
+    { "name": "Carroll County", "lat": 42.06, "lon": -89.93 }
+  ]
+}

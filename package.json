@@ -1,0 +1,19 @@
+{
+  "name": "comed-outage-analyzer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Polls the ComEd outage map and tracks how fast outages are being restored, overall and by area.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "comed-outage-analyzer": "./comed.js"
+  },
+  "scripts": {
+    "check": "node comed.js check",
+    "watch": "node comed.js watch",
+    "demo": "node comed.js demo",
+    "test": "node --test \"test/*.test.js\""
+  }
+}

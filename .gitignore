@@ -1,0 +1,4 @@
+# Collected snapshots and generated output are local working data.
+data/
+dashboard.html
+zones.json
